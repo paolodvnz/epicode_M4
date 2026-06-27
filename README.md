@@ -65,19 +65,44 @@ Sostituzione dell'architettura MobileNetV2 con **VGG16** per la classificazione 
 ### 4. AI Ghostwriter — Generazione di Testo in Stile Dantesco
 
 **File:** [`project_4_m4.ipynb`]
-**Model** [`model/best_dante_model.keras`] 
+
+**Model:** [`model/best_dante_model.keras`] 
 
 Rete neurale ricorrente character-level (GRU doppio strato) addestrata sull'intero corpus (~570K caratteri) per imparare lessico, metrica e sintassi dantesca. Training da 68 epoche con loss finale **0.11**.
 
 **Pipeline:**
-1. Setup — costanti (`SEQ_LENGTH=128`, `EMBEDDING_DIM=256`, `RNN_UNITS=1024`, `DROPOUT_RATE=0.3`, `EPOCHS=200`), seed globale, encoding UTF-8 con caratteri accentati
-2. **Preprocessing** — caricamento corpus, costruzione vocabolario carattere→indice, pipeline `tf.data` (`.cache()` → `.shuffle()` → `.batch(64)` → `.prefetch(AUTOTUNE)`)
-3. **Architettura** — `build_model()`: `Embedding(vocab_size, 256)` → `GRU(1024, return_sequences=True)` → `Dropout(0.3)` → `GRU(1024, return_sequences=True)` → `Dropout(0.3)` → `Dense(vocab_size)`
-4. **Modello di inferenza stateful** — `build_inference_model()`: `keras.Model` separato con `return_state=True`, condivide oggetti `Embedding` e `Dense` con il training model; i pesi GRU vengono sincronizzati via `set_weights()` a ogni chiamata (O(num_generate) vs O(seq_length × num_generate) dell'approccio sliding window)
-5. **GenerazioneCallback** — mostra un campione di testo ogni 5 epoche durante il training per osservare la progressione dell'apprendimento (da sillabe casuali a italiano medievale riconoscibile)
-6. **Training** — Adam, `SparseCategoricalCrossentropy(from_logits=True)`, callbacks standard (EarlyStopping patience=5, ReduceLROnPlateau patience=2, ModelCheckpoint); curva loss 3.02 → 0.11 in 68 epoche
-7. **Esperimento temperatura** — generazione con 5 temperature (0.1, 0.5, 1.0, 1.5, 2.0) × 3 prompt iconici × 3 campioni per combinazione; analisi comparativa della creatività vs coerenza stilistica; temperatura ottimale: **T = 0.5**
+1. Setup — costanti, seed globale, encoding UTF-8 
+2. **Preprocessing** — caricamento corpus, costruzione vocabolario carattere-indice, pipeline `tf.data` 
+3. **Architettura** — `build_model()`: `Embedding(vocab_size, 256)` - `GRU(1024, return_sequences=True)` - `Dropout(0.3)` - `GRU(1024, return_sequences=True)` - `Dropout(0.3)` - `Dense(vocab_size)`
+4. **Modello di inferenza stateful** — `build_inference_model()`: `keras.Model` separato con `return_state=True`, condivide oggetti `Embedding` e `Dense` con il training model;
+5. **GenerazioneCallback** — mostra un campione di testo ogni 5 epoche durante il training per osservare la progressione dell'apprendimento
+6. **Training** — Adam, `SparseCategoricalCrossentropy(from_logits=True)`, callbacks standard (EarlyStopping patience=5, ReduceLROnPlateau patience=2, ModelCheckpoint);
+7. **Esperimento temperatura** — generazione con 5 temperature (0.1, 0.5, 1.0, 1.5, 2.0) × 3 prompt iconici × 3 campioni per combinazione; analisi comparativa della creatività vs coerenza stilistica
 
 **Librerie:** `tensorflow/keras`, `numpy`, `matplotlib`
+
+---
+
+### Progetto Finale — Riconoscimento Gesti della Mano (Sasso, Carta, Forbice)
+
+**File:** [`project_final_m4.ipynb`]
+
+**Real Test:** [`rps-real-test`]
+
+CNN *from scratch* con Data Augmentation per classificare i gesti **rock / paper / scissors** dal dataset CGI **Rock-Paper-Scissors** (~2.500 immagini sintetiche 150×150 RGB su sfondo bianco). Il cuore del progetto non è solo raggiungere alta accuratezza sul CGI, ma **diagnosticare e quantificare il domain gap** verso foto reali della mano, isolando sperimentalmente la causa del crollo di performance.
+
+**Pipeline:**
+1. Setup e seed globale — costanti, palette e `rcParams`; download automatico di `rps.zip` e `rps-test-set.zip`
+2. **Dataset CGI** — caricamento gerarchico per sottocartelle (`/rock`, `/paper`, `/scissors`), train (`rps`) vs validation (`rps-test-set`)
+3. **Data Augmentation** — `ImageDataGenerator` live solo su train; ottimizzazioni Keras 3: pre-caricamento in RAM + pipeline `tf.data` con `prefetch`
+4. **Architettura** — builder parametrico: 4 blocchi `Conv2D`+`MaxPooling2D` (32-64-128-256) con **testa selezionabile**: `Flatten`+`Dense(512)` (~11M params, massima capacità) vs `GlobalAveragePooling2D`; `Dropout(0.5)` - `Dense(3, softmax)`
+5. **Compilazione e Training** — Adam, `categorical_crossentropy`, EarlyStopping + callback custom di stop a `accuracy > 98%`, `Checkpoint` in `model/best_<head>.keras` + `history_<head>.json`
+6. **Confronto architetture** — curve loss/accuracy train vs. val, tabella parametri e val_accuracy CGI 
+7. **Validazione formale su dominio CGI** — classification report e confusion matrix sul test set sintetico
+8. **Test reale** — set di **540 foto reali** della mano (`rps-real-test`) su 3 scenari di sfondo (`white_bg`, `grey_bg`, `noisy_bg`); analisi del **domain gap scenario per scenario** e **analisi degli errori**
+9. **Esperimenti diagnostici** — tre prove per isolare la causa del gap: (1) la convergenza sul CGI *non* danneggia il transfer; (2) confronto **4 architetture × 3 seed** con selezione su val CGI; (3) **fine-tuning** con poche foto reali (protocollo no-leakage 50/50 su `white_bg`)
+10. **Relazione finale** — confronto architetturale, quantificazione del domain gap, analisi errori, esiti degli esperimenti, riproducibilità, utilizzabilità del modello e limiti metodologici
+
+**Librerie:** `tensorflow/keras`, `scikit-learn`, `numpy`, `matplotlib`, `Pillow`
 
 ---
